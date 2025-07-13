@@ -40,8 +40,28 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
-    ],
 
+        'admin' => [
+            'driver' => 'session',
+            'provider' => 'admins',
+        ],
+
+        'agent' => [
+            'driver' => 'session',
+            'provider' => 'agents',
+        ],
+
+        'client' => [
+            'driver' => 'session',
+            'provider' => 'clients',
+        ],
+
+        'api' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+            'hash' => false,
+        ],
+    ],
     /*
     |--------------------------------------------------------------------------
     | User Providers
@@ -65,10 +85,20 @@ return [
             'model' => App\Models\User::class,
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'admins' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\User::class,
+        ],
+
+        'agents' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\User::class,
+        ],
+
+        'clients' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\User::class,
+        ],
     ],
 
     /*
