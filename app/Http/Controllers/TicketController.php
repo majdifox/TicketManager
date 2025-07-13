@@ -8,40 +8,82 @@ use App\Models\Agent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use App\Http\Requests\CreateTicketRequest;
+use App\Http\Requests\UpdateTicketRequest;
 
 class TicketController extends Controller
 {
     /**
-     * Display a listing of tickets.
+     * Display tickets for admin.
      */
-    public function index(Request $request)
+    public function adminIndex(Request $request)
     {
-        $user = Auth::user();
         $query = Ticket::with(['client.user', 'agent.user', 'category']);
 
-        // Filter based on user role
-        if ($user->isClient() && $user->client) {
-            $query->where('client_id', $user->client->id);
-        } elseif ($user->isAgent() && $user->agent) {
-            $query->where('agent_id', $user->agent->id);
-        }
-
         // Apply filters
-        $query->when($request->status, function ($q, $status) {
-            return $q->where('status', $status);
-        })
-        ->when($request->priority, function ($q, $priority) {
-            return $q->where('priority', $priority);
-        })
-        ->when($request->category_id, function ($q, $category) {
-            return $q->where('category_id', $category);
-        });
+        $this->applyFilters($query, $request);
 
-        $tickets = $query->latest()->paginate(15);
+        $tickets = $query->latest()->paginate(15)->withQueryString();
 
-        return response()->json([
+        return Inertia::render('Admin/Tickets/Index', [
             'tickets' => $tickets,
+            'filters' => $request->only(['status', 'priority', 'category_id', 'search']),
+            'categories' => Category::active()->get(),
             'statuses' => Ticket::getStatuses(),
+            'priorities' => Ticket::getPriorities(),
+        ]);
+    }
+
+    /**
+     * Display tickets for agent.
+     */
+    public function agentIndex(Request $request)
+    {
+        $agent = Auth::guard('agent')->user()->agent;
+        $query = Ticket::where('agent_id', $agent->id)
+            ->with(['client.user', 'category']);
+
+        $this->applyFilters($query, $request);
+
+        $tickets = $query->latest()->paginate(15)->withQueryString();
+
+        return Inertia::render('Agent/Tickets/Index', [
+            'tickets' => $tickets,
+            'filters' => $request->only(['status', 'priority', 'search']),
+            'statuses' => Ticket::getStatuses(),
+            'priorities' => Ticket::getPriorities(),
+        ]);
+    }
+
+    /**
+     * Display tickets for client.
+     */
+    public function clientIndex(Request $request)
+    {
+        $client = Auth::guard('client')->user()->client;
+        $query = Ticket::where('client_id', $client->id)
+            ->with(['agent.user', 'category']);
+
+        $this->applyFilters($query, $request);
+
+        $tickets = $query->latest()->paginate(15)->withQueryString();
+
+        return Inertia::render('Client/Tickets/Index', [
+            'tickets' => $tickets,
+            'filters' => $request->only(['status', 'priority', 'search']),
+            'statuses' => Ticket::getStatuses(),
+            'priorities' => Ticket::getPriorities(),
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new ticket.
+     */
+    public function create()
+    {
+        return Inertia::render('Client/Tickets/Create', [
+            'categories' => Category::active()->get(),
             'priorities' => Ticket::getPriorities(),
         ]);
     }
@@ -49,22 +91,9 @@ class TicketController extends Controller
     /**
      * Store a newly created ticket.
      */
-    public function store(Request $request)
+    public function store(CreateTicketRequest $request)
     {
-        $user = Auth::user();
-        
-        // Only clients can create tickets
-        if (!$user->isClient() || !$user->client) {
-            return response()->json(['message' => 'Only clients can create tickets.'], 403);
-        }
-
-        $request->validate([
-            'subject' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category_id' => 'required|exists:categories,id',
-            'priority' => 'required|in:Low,Medium,High,Critical',
-            'attachment' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
-        ]);
+        $client = Auth::guard('client')->user()->client;
 
         $attachmentPath = null;
         if ($request->hasFile('attachment')) {
@@ -72,7 +101,7 @@ class TicketController extends Controller
         }
 
         $ticket = Ticket::create([
-            'client_id' => $user->client->id,
+            'client_id' => $client->id,
             'category_id' => $request->category_id,
             'subject' => $request->subject,
             'description' => $request->description,
@@ -83,14 +112,8 @@ class TicketController extends Controller
         // Auto-assign to available agent
         $this->autoAssignAgent($ticket);
 
-        $ticket->load(['client.user', 'agent.user', 'category']);
-
-        // TODO: Send notification to assigned agent
-        
-        return response()->json([
-            'message' => 'Ticket created successfully.',
-            'ticket' => $ticket,
-        ], 201);
+        return redirect()->route('client.tickets.show', $ticket)
+            ->with('success', 'Ticket created successfully.');
     }
 
     /**
@@ -98,40 +121,33 @@ class TicketController extends Controller
      */
     public function show(Ticket $ticket)
     {
-        $user = Auth::user();
-        
-        // Check access permissions
-        if ($user->isClient() && (!$user->client || $ticket->client_id !== $user->client->id)) {
-            return response()->json(['message' => 'You can only view your own tickets.'], 403);
-        }
+        $this->authorizeTicketAccess($ticket);
 
         $ticket->load(['client.user', 'agent.user', 'category']);
 
-        return response()->json([
+        // Get the appropriate view based on user role
+        $view = 'Client/Tickets/Show';
+        if (Auth::guard('admin')->check()) {
+            $view = 'Admin/Tickets/Show';
+        } elseif (Auth::guard('agent')->check()) {
+            $view = 'Agent/Tickets/Show';
+        }
+
+        return Inertia::render($view, [
             'ticket' => $ticket,
-            'chatify_conversation_id' => $ticket->getChatifyConversationId(),
+            'chatifyConversationId' => $ticket->getChatifyConversationId(),
+            'statuses' => Ticket::getStatuses(),
+            'priorities' => Ticket::getPriorities(),
+            'agents' => Auth::guard('admin')->check() ? Agent::with('user')->get() : null,
         ]);
     }
 
     /**
      * Update the specified ticket.
      */
-    public function update(Request $request, Ticket $ticket)
+    public function update(UpdateTicketRequest $request, Ticket $ticket)
     {
-        $user = Auth::user();
-        
-        // Only agents and admins can update tickets
-        if (!$user->isAgent() && !$user->isAdmin()) {
-            return response()->json(['message' => 'Only agents and admins can update tickets.'], 403);
-        }
-
-        $request->validate([
-            'status' => 'sometimes|required|in:Open,In Progress,Resolved,Closed',
-            'agent_id' => 'sometimes|nullable|exists:agents,id',
-            'priority' => 'sometimes|required|in:Low,Medium,High,Critical',
-        ]);
-
-        $updateData = $request->only(['status', 'agent_id', 'priority']);
+        $updateData = $request->validated();
 
         // Set resolved_at timestamp when marking as resolved/closed
         if (isset($updateData['status']) && in_array($updateData['status'], ['Resolved', 'Closed'])) {
@@ -139,15 +155,8 @@ class TicketController extends Controller
         }
 
         $ticket->update($updateData);
-        
-        $ticket->load(['client.user', 'agent.user', 'category']);
 
-        // TODO: Send notifications
-
-        return response()->json([
-            'message' => 'Ticket updated successfully.',
-            'ticket' => $ticket,
-        ]);
+        return redirect()->back()->with('success', 'Ticket updated successfully.');
     }
 
     /**
@@ -155,12 +164,6 @@ class TicketController extends Controller
      */
     public function destroy(Ticket $ticket)
     {
-        $user = Auth::user();
-        
-        if (!$user->isAdmin()) {
-            return response()->json(['message' => 'Only admins can delete tickets.'], 403);
-        }
-
         // Delete attachment if exists
         if ($ticket->attachment) {
             Storage::disk('public')->delete($ticket->attachment);
@@ -168,9 +171,49 @@ class TicketController extends Controller
 
         $ticket->delete();
 
-        return response()->json([
-            'message' => 'Ticket deleted successfully.',
-        ]);
+        return redirect()->route('admin.tickets.index')
+            ->with('success', 'Ticket deleted successfully.');
+    }
+
+    /**
+     * Apply filters to the query.
+     */
+    private function applyFilters($query, Request $request)
+    {
+        $query->when($request->status, function ($q, $status) {
+            return $q->where('status', $status);
+        })
+        ->when($request->priority, function ($q, $priority) {
+            return $q->where('priority', $priority);
+        })
+        ->when($request->category_id, function ($q, $category) {
+            return $q->where('category_id', $category);
+        })
+        ->when($request->search, function ($q, $search) {
+            return $q->where(function ($query) use ($search) {
+                $query->where('ticket_number', 'like', "%{$search}%")
+                    ->orWhere('subject', 'like', "%{$search}%");
+            });
+        });
+    }
+
+    /**
+     * Authorize ticket access based on user role.
+     */
+    private function authorizeTicketAccess(Ticket $ticket)
+    {
+        if (Auth::guard('client')->check()) {
+            $client = Auth::guard('client')->user()->client;
+            if ($ticket->client_id !== $client->id) {
+                abort(403, 'You can only view your own tickets.');
+            }
+        } elseif (Auth::guard('agent')->check()) {
+            $agent = Auth::guard('agent')->user()->agent;
+            if ($ticket->agent_id !== $agent->id) {
+                abort(403, 'You can only view tickets assigned to you.');
+            }
+        }
+        // Admins can view all tickets
     }
 
     /**
@@ -178,7 +221,6 @@ class TicketController extends Controller
      */
     private function autoAssignAgent(Ticket $ticket)
     {
-        // Get available agents for this category
         $availableAgent = Agent::whereHas('categories', function ($query) use ($ticket) {
             $query->where('categories.id', $ticket->category_id);
         })
@@ -192,31 +234,5 @@ class TicketController extends Controller
         if ($availableAgent) {
             $ticket->update(['agent_id' => $availableAgent->id]);
         }
-    }
-
-    /**
-     * Get ticket statistics.
-     */
-    public function stats()
-    {
-        $user = Auth::user();
-        $query = Ticket::query();
-
-        // Filter based on user role
-        if ($user->isClient() && $user->client) {
-            $query->where('client_id', $user->client->id);
-        } elseif ($user->isAgent() && $user->agent) {
-            $query->where('agent_id', $user->agent->id);
-        }
-
-        $stats = [
-            'total' => $query->count(),
-            'open' => (clone $query)->where('status', 'Open')->count(),
-            'in_progress' => (clone $query)->where('status', 'In Progress')->count(),
-            'resolved' => (clone $query)->where('status', 'Resolved')->count(),
-            'closed' => (clone $query)->where('status', 'Closed')->count(),
-        ];
-
-        return response()->json($stats);
     }
 }
