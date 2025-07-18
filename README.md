@@ -173,7 +173,7 @@ You can find UI screenshots in the `/screenshots` folder:
 
 To create an admin account manually using Laravel Tinker, run the following commands in your terminal:
 
-```php
+
 // Start Tinker
 php artisan tinker
 
@@ -192,6 +192,8 @@ App\Models\Admin::create([
     'phone' => '+1234567890',
 ]);
 
-echo "✅ Admin user created successfully!";
+
+
+Good bye !
 
 
