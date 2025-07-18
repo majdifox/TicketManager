@@ -82,8 +82,8 @@ This platform allows users to create, manage, and resolve support tickets throug
   - Resolution times  
   - Agent performance  
 
-📷 _Example Screenshot_  
-![Admin Dashboard](screenshots/admin_dashboard.png)
+📷 _Admin Dashboard_  
+![2](https://github.com/user-attachments/assets/0d7e7510-7189-4b69-a020-3c397da3fbf9)
 
 ---
 
@@ -93,8 +93,8 @@ This platform allows users to create, manage, and resolve support tickets throug
 - Respond and update statuses  
 - Add internal notes and attachments
 
-📷 _Example Screenshot_  
-![Agent Dashboard](screenshots/agent_dashboard.png)
+📷 _Agent Dashboard_  
+![1](https://github.com/user-attachments/assets/f9eab46d-ee97-4a56-8e8b-fd327ae75915)
 
 ---
 
@@ -104,8 +104,9 @@ This platform allows users to create, manage, and resolve support tickets throug
 - Track status and add comments  
 - Get email notifications on updates
 
-📷 _Example Screenshot_  
-![Client Dashboard](screenshots/client_dashboard.png)
+📷 _Client Dashboard_  
+
+![2](https://github.com/user-attachments/assets/c8e8f096-bb24-4c4d-84a2-e632536fe15d)
 
 ---
 
@@ -154,21 +155,11 @@ This platform allows users to create, manage, and resolve support tickets throug
 
 You can find UI screenshots in the `/screenshots` folder:
 
-- `admin_dashboard.png`
-- `agent_dashboard.png`
-- `client_dashboard.png`
+
 - Others (login page, ticket form, message thread...)
 
 ---
 
-## 🧑‍💻 Developed By
-
-**[Your Full Name]**  
-Intern Developer  
-[Your Email]  
-[LinkedIn or GitHub profile link]
-
----
 
 ## ✅ Status
 
@@ -177,4 +168,30 @@ Intern Developer
 📂 See [Cahier des Charges (FR)](link-to-pdf-if-public) for full specifications.
 
 ---
+
+## 🛠️ Admin Account Setup (using Laravel Tinker)
+
+To create an admin account manually using Laravel Tinker, run the following commands in your terminal:
+
+```php
+// Start Tinker
+php artisan tinker
+
+// Create the admin user
+$user = App\Models\User::create([
+    'name' => 'Admin User',
+    'email' => 'admin@example.com',
+    'password' => bcrypt('password123'),
+    'role_id' => 1, // Admin role ID
+]);
+
+// Create the admin profile
+App\Models\Admin::create([
+    'user_id' => $user->id,
+    'department' => 'IT',
+    'phone' => '+1234567890',
+]);
+
+echo "✅ Admin user created successfully!";
+
 
