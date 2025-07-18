@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Auth;
 
 class CreateTicketRequest extends FormRequest
 {
@@ -11,7 +12,9 @@ class CreateTicketRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->isClient();
+        // Check if user is authenticated with client guard and has client role
+        return Auth::guard('client')->check() && 
+               Auth::guard('client')->user()->role_id === 3;
     }
 
     /**

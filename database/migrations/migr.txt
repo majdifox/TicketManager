@@ -1,0 +1,108 @@
+    Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+
+        Schema::create('roles', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        // Insert default roles
+        DB::table('roles')->insert([
+            ['id' => 1, 'name' => 'Admin', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'Agent', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 3, 'name' => 'Client', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+    }
+
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignId('role_id')->after('email')->constrained();
+        });
+    }
+
+        Schema::create('admins', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('department')->nullable();
+            $table->string('phone')->nullable();
+            $table->timestamps();
+        });
+    }
+
+        Schema::create('agents', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('department')->nullable();
+            $table->string('phone')->nullable();
+            $table->boolean('is_available')->default(true);
+            $table->timestamps();
+        });
+    }
+
+        Schema::create('clients', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('company')->nullable();
+            $table->string('phone')->nullable();
+            $table->text('address')->nullable();
+            $table->timestamps();
+        });
+    }
+
+        Schema::create('categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+    }
+
+        Schema::create('category_agent', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('category_id')->constrained()->onDelete('cascade');
+            $table->foreignId('agent_id')->constrained()->onDelete('cascade');
+            $table->timestamps();
+            
+            // Ensure unique combination
+            $table->unique(['category_id', 'agent_id']);
+        });
+    }
+
+        Schema::create('tickets', function (Blueprint $table) {
+            $table->id();
+            $table->string('ticket_number')->unique();
+            $table->foreignId('client_id')->constrained()->onDelete('cascade');
+            $table->foreignId('agent_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('category_id')->constrained();
+            $table->string('subject');
+            $table->text('description');
+            $table->enum('priority', ['Low', 'Medium', 'High', 'Critical'])->default('Medium');
+            $table->enum('status', ['Open', 'In Progress', 'Resolved', 'Closed'])->default('Open');
+            $table->string('attachment')->nullable();
+            $table->timestamp('resolved_at')->nullable();
+            $table->timestamps();
+            
+            // Indexes for performance
+            $table->index('status');
+            $table->index('priority');
+            $table->index(['client_id', 'status']);
+            $table->index(['agent_id', 'status']);
+        });
+    }
+
+Schema::create('notifications', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });

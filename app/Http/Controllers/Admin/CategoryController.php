@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
+use App\Models\Ticket;
 use App\Models\Agent;
+use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\TicketsExport;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Inertia\Inertia;
 
 class CategoryController extends Controller
 {
@@ -17,7 +23,21 @@ class CategoryController extends Controller
         $categories = Category::withCount(['tickets', 'agents'])
             ->paginate(15);
 
-        return response()->json($categories);
+        return Inertia::render('Admin/Categories/Index', [
+            'categories' => $categories,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new category.
+     */
+    public function create()
+    {
+        $agents = Agent::with('user:id,name')->get();
+        
+        return Inertia::render('Admin/Categories/Create', [
+            'agents' => $agents,
+        ]);
     }
 
     /**
@@ -39,12 +59,8 @@ class CategoryController extends Controller
             $category->agents()->attach($request->agents);
         }
 
-        $category->loadCount(['tickets', 'agents']);
-
-        return response()->json([
-            'message' => 'Category created successfully.',
-            'category' => $category,
-        ], 201);
+        return redirect()->route('admin.categories.index')
+            ->with('success', 'Category created successfully.');
     }
 
     /**
@@ -54,7 +70,23 @@ class CategoryController extends Controller
     {
         $category->load(['agents.user'])->loadCount(['tickets']);
 
-        return response()->json($category);
+        return Inertia::render('Admin/Categories/Show', [
+            'category' => $category,
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified category.
+     */
+    public function edit(Category $category)
+    {
+        $category->load(['agents.user']);
+        $agents = Agent::with('user:id,name')->get();
+
+        return Inertia::render('Admin/Categories/Edit', [
+            'category' => $category,
+            'agents' => $agents,
+        ]);
     }
 
     /**
@@ -76,12 +108,8 @@ class CategoryController extends Controller
             $category->agents()->sync($request->agents);
         }
 
-        $category->load(['agents.user'])->loadCount(['tickets']);
-
-        return response()->json([
-            'message' => 'Category updated successfully.',
-            'category' => $category,
-        ]);
+        return redirect()->route('admin.categories.index')
+            ->with('success', 'Category updated successfully.');
     }
 
     /**
@@ -91,20 +119,18 @@ class CategoryController extends Controller
     {
         // Check if category has tickets
         if ($category->tickets()->exists()) {
-            return response()->json([
-                'message' => 'Cannot delete category with existing tickets.',
-            ], 422);
+            return redirect()->back()
+                ->withErrors(['error' => 'Cannot delete category with existing tickets.']);
         }
 
         $category->delete();
 
-        return response()->json([
-            'message' => 'Category deleted successfully.',
-        ]);
+        return redirect()->route('admin.categories.index')
+            ->with('success', 'Category deleted successfully.');
     }
 
     /**
-     * Get all active categories.
+     * Get all active categories (API endpoint).
      */
     public function active()
     {
@@ -116,7 +142,7 @@ class CategoryController extends Controller
     }
 
     /**
-     * Get available agents for a category.
+     * Get available agents for a category (API endpoint).
      */
     public function availableAgents()
     {

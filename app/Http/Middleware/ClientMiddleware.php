@@ -4,7 +4,9 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\User;
 
 class ClientMiddleware
 {
@@ -15,12 +17,27 @@ class ClientMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!auth()->check() || !auth()->user()->isClient()) {
+        if (!Auth::guard('client')->check()) {
             if ($request->expectsJson()) {
-                return response()->json(['message' => 'Unauthorized. Client access required.'], 403);
+                return response()->json(['message' => 'Unauthenticated.'], 401);
             }
-            
+            return redirect()->route('client.login');
+        }
+
+        $userId = Auth::guard('client')->id();
+        $user = User::find($userId);
+
+        if (!$user || $user->role_id !== 3) {
             abort(403, 'Unauthorized. Client access required.');
+        }
+
+        // Share auth user with Inertia
+        if (class_exists('\Inertia\Inertia')) {
+            $user->load(['client']);
+            \Inertia\Inertia::share('auth', [
+                'user' => $user,
+                'role' => 'client'
+            ]);
         }
 
         return $next($request);

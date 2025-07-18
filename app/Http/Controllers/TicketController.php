@@ -24,7 +24,7 @@ class TicketController extends Controller
         // Apply filters
         $this->applyFilters($query, $request);
 
-        $tickets = $query->latest()->paginate(15)->withQueryString();
+        $tickets = $query->latest()->paginate(15)->appends($request->all());
 
         return Inertia::render('Admin/Tickets/Index', [
             'tickets' => $tickets,
@@ -46,7 +46,7 @@ class TicketController extends Controller
 
         $this->applyFilters($query, $request);
 
-        $tickets = $query->latest()->paginate(15)->withQueryString();
+        $tickets = $query->latest()->paginate(15)->appends($request->all());
 
         return Inertia::render('Agent/Tickets/Index', [
             'tickets' => $tickets,
@@ -67,7 +67,7 @@ class TicketController extends Controller
 
         $this->applyFilters($query, $request);
 
-        $tickets = $query->latest()->paginate(15)->withQueryString();
+        $tickets = $query->latest()->paginate(15)->appends($request->all());
 
         return Inertia::render('Client/Tickets/Index', [
             'tickets' => $tickets,
@@ -120,33 +120,59 @@ class TicketController extends Controller
      * Display the specified ticket.
      */
     public function show(Ticket $ticket)
+{
+    $this->authorizeTicketAccess($ticket);
+
+    $ticket->load([
+        'client.user', 
+        'agent.user', 
+        'category'
+    ]);
+
+    // Get the appropriate view based on user role
+    $view = 'Client/Tickets/Show';
+    if (Auth::guard('admin')->check()) {
+        $view = 'Admin/Tickets/Show';
+    } elseif (Auth::guard('agent')->check()) {
+        $view = 'Agent/Tickets/Show';
+    }
+
+    return Inertia::render($view, [
+        'ticket' => $ticket,
+        'chatifyConversationId' => $ticket->getChatifyConversationId(),
+        'statuses' => Ticket::getStatuses(),
+        'priorities' => Ticket::getPriorities(),
+        'agents' => Auth::guard('admin')->check() ? Agent::with('user')->get() : null,
+    ]);
+}
+
+    /**
+     * Show the form for editing the specified ticket.
+     */
+    public function edit(Ticket $ticket)
     {
         $this->authorizeTicketAccess($ticket);
 
         $ticket->load(['client.user', 'agent.user', 'category']);
+        
+        $categories = Category::active()->get();
+        $agents = Agent::with('user')->available()->get();
 
-        // Get the appropriate view based on user role
-        $view = 'Client/Tickets/Show';
-        if (Auth::guard('admin')->check()) {
-            $view = 'Admin/Tickets/Show';
-        } elseif (Auth::guard('agent')->check()) {
-            $view = 'Agent/Tickets/Show';
-        }
-
-        return Inertia::render($view, [
+        return Inertia::render('Admin/Tickets/Edit', [
             'ticket' => $ticket,
-            'chatifyConversationId' => $ticket->getChatifyConversationId(),
-            'statuses' => Ticket::getStatuses(),
-            'priorities' => Ticket::getPriorities(),
-            'agents' => Auth::guard('admin')->check() ? Agent::with('user')->get() : null,
+            'categories' => $categories,
+            'agents' => $agents,
         ]);
     }
 
     /**
      * Update the specified ticket.
      */
-    public function update(UpdateTicketRequest $request, Ticket $ticket)
+       public function update(UpdateTicketRequest $request, Ticket $ticket)
     {
+        // Ensure admin/agent can access this ticket
+        $this->authorizeTicketAccess($ticket);
+
         $updateData = $request->validated();
 
         // Set resolved_at timestamp when marking as resolved/closed
@@ -154,7 +180,21 @@ class TicketController extends Controller
             $updateData['resolved_at'] = now();
         }
 
+        // If status is being changed back to Open or In Progress, clear resolved_at
+        if (isset($updateData['status']) && in_array($updateData['status'], ['Open', 'In Progress'])) {
+            $updateData['resolved_at'] = null;
+        }
+
         $ticket->update($updateData);
+
+        // Redirect based on user type
+        if (Auth::guard('admin')->check()) {
+            return redirect()->route('admin.tickets.show', $ticket)
+                ->with('success', 'Ticket updated successfully.');
+        } elseif (Auth::guard('agent')->check()) {
+            return redirect()->route('agent.tickets.show', $ticket)
+                ->with('success', 'Ticket updated successfully.');
+        }
 
         return redirect()->back()->with('success', 'Ticket updated successfully.');
     }
@@ -200,20 +240,24 @@ class TicketController extends Controller
     /**
      * Authorize ticket access based on user role.
      */
-    private function authorizeTicketAccess(Ticket $ticket)
+       private function authorizeTicketAccess(Ticket $ticket)
     {
-        if (Auth::guard('client')->check()) {
-            $client = Auth::guard('client')->user()->client;
-            if ($ticket->client_id !== $client->id) {
-                abort(403, 'You can only view your own tickets.');
-            }
+        if (Auth::guard('admin')->check()) {
+            // Admins can view and update all tickets
+            return;
         } elseif (Auth::guard('agent')->check()) {
             $agent = Auth::guard('agent')->user()->agent;
             if ($ticket->agent_id !== $agent->id) {
                 abort(403, 'You can only view tickets assigned to you.');
             }
+        } elseif (Auth::guard('client')->check()) {
+            $client = Auth::guard('client')->user()->client;
+            if ($ticket->client_id !== $client->id) {
+                abort(403, 'You can only view your own tickets.');
+            }
+        } else {
+            abort(403, 'Unauthorized access.');
         }
-        // Admins can view all tickets
     }
 
     /**

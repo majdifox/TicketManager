@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\User;
 
 class AdminMiddleware
 {
@@ -23,14 +24,18 @@ class AdminMiddleware
             return redirect()->route('admin.login');
         }
 
-        if (Auth::guard('admin')->user()->role_id !== 1) {
+        $userId = Auth::guard('admin')->id();
+        $user = User::find($userId);
+
+        if (!$user || $user->role_id !== 1) {
             abort(403, 'Unauthorized. Admin access required.');
         }
 
         // Share auth user with Inertia
         if (class_exists('\Inertia\Inertia')) {
+            $user->load(['admin']);
             \Inertia\Inertia::share('auth', [
-                'user' => Auth::guard('admin')->user()->load(['admin']),
+                'user' => $user,
                 'role' => 'admin'
             ]);
         }

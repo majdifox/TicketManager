@@ -38,6 +38,7 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            \App\Http\Middleware\HandleInertiaRequests::class,
         ],
 
         'api' => [
@@ -48,7 +49,7 @@ class Kernel extends HttpKernel
     ];
 
     /**
-     * The application's middleware aliases.
+     * The application's route middleware aliases.
      *
      * Aliases may be used to conveniently assign middleware to routes and groups.
      *
@@ -68,5 +69,6 @@ class Kernel extends HttpKernel
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
         'agent' => \App\Http\Middleware\AgentMiddleware::class,
         'client' => \App\Http\Middleware\ClientMiddleware::class,
+        'multi.auth' => \App\Http\Middleware\MultiGuardMiddleware::class,
     ];
 }

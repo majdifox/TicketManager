@@ -1,17 +1,7 @@
-<script setup>
-import { ref } from 'vue';
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import Dropdown from '@/Components/Dropdown.vue';
-import DropdownLink from '@/Components/DropdownLink.vue';
-import NavLink from '@/Components/NavLink.vue';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
-
-const showingNavigationDropdown = ref(false);
-</script>
-
 <template>
     <div>
+        <Head :title="title" />
+
         <div class="min-h-screen bg-gray-100">
             <nav class="bg-white border-b border-gray-100">
                 <!-- Primary Navigation Menu -->
@@ -20,24 +10,56 @@ const showingNavigationDropdown = ref(false);
                         <div class="flex">
                             <!-- Logo -->
                             <div class="shrink-0 flex items-center">
-                                <Link :href="route('dashboard')">
-                                    <ApplicationLogo
-                                        class="block h-9 w-auto fill-current text-gray-800"
-                                    />
+                                <Link :href="dashboardRoute">
+                                    <ApplicationLogo class="block h-9 w-auto fill-current text-gray-800" />
                                 </Link>
                             </div>
 
                             <!-- Navigation Links -->
-                            <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
+                            <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
+                                <NavLink :href="dashboardRoute" :active="route().current(dashboardRouteName)">
                                     Dashboard
                                 </NavLink>
+                                
+                                <NavLink :href="ticketsRoute" :active="route().current(ticketsRouteName)">
+                                    Tickets
+                                </NavLink>
+
+                                <!-- Admin Links -->
+                                <template v-if="isAdmin">
+                                    <NavLink :href="route('admin.users.index')" :active="route().current('admin.users.*')">
+                                        Users
+                                    </NavLink>
+                                    <NavLink :href="route('admin.categories.index')" :active="route().current('admin.categories.*')">
+                                        Categories
+                                    </NavLink>
+                                    <NavLink :href="route('admin.reports.index')" :active="route().current('admin.reports.*')">
+                                        Reports
+                                    </NavLink>
+                                </template>
+
+                                <!-- Agent Links -->
+                                <template v-if="isAgent">
+                                    <NavLink :href="route('agent.profile')" :active="route().current('agent.profile')">
+                                        Profile
+                                    </NavLink>
+                                </template>
+
+                                <!-- Client Links -->
+                                <template v-if="isClient">
+                                    <NavLink :href="route('client.profile')" :active="route().current('client.profile')">
+                                        Profile
+                                    </NavLink>
+                                </template>
                             </div>
                         </div>
 
-                        <div class="hidden sm:flex sm:items-center sm:ms-6">
+                        <div class="hidden sm:flex sm:items-center sm:ml-6">
+                            <!-- Notifications -->
+                            <NotificationDropdown />
+
                             <!-- Settings Dropdown -->
-                            <div class="ms-3 relative">
+                            <div class="ml-3 relative">
                                 <Dropdown align="right" width="48">
                                     <template #trigger>
                                         <span class="inline-flex rounded-md">
@@ -48,7 +70,7 @@ const showingNavigationDropdown = ref(false);
                                                 {{ $page.props.auth.user.name }}
 
                                                 <svg
-                                                    class="ms-2 -me-0.5 h-4 w-4"
+                                                    class="ml-2 -mr-0.5 h-4 w-4"
                                                     xmlns="http://www.w3.org/2000/svg"
                                                     viewBox="0 0 20 20"
                                                     fill="currentColor"
@@ -64,8 +86,10 @@ const showingNavigationDropdown = ref(false);
                                     </template>
 
                                     <template #content>
-                                        <DropdownLink :href="route('profile.edit')"> Profile </DropdownLink>
-                                        <DropdownLink :href="route('logout')" method="post" as="button">
+                                        <DropdownLink :href="profileRoute">
+                                            Profile
+                                        </DropdownLink>
+                                        <DropdownLink :href="logoutRoute" method="post" as="button">
                                             Log Out
                                         </DropdownLink>
                                     </template>
@@ -74,7 +98,7 @@ const showingNavigationDropdown = ref(false);
                         </div>
 
                         <!-- Hamburger -->
-                        <div class="-me-2 flex items-center sm:hidden">
+                        <div class="-mr-2 flex items-center sm:hidden">
                             <button
                                 @click="showingNavigationDropdown = !showingNavigationDropdown"
                                 class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out"
@@ -112,8 +136,11 @@ const showingNavigationDropdown = ref(false);
                     class="sm:hidden"
                 >
                     <div class="pt-2 pb-3 space-y-1">
-                        <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
+                        <ResponsiveNavLink :href="dashboardRoute" :active="route().current(dashboardRouteName)">
                             Dashboard
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="ticketsRoute" :active="route().current(ticketsRouteName)">
+                            Tickets
                         </ResponsiveNavLink>
                     </div>
 
@@ -127,8 +154,10 @@ const showingNavigationDropdown = ref(false);
                         </div>
 
                         <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.edit')"> Profile </ResponsiveNavLink>
-                            <ResponsiveNavLink :href="route('logout')" method="post" as="button">
+                            <ResponsiveNavLink :href="profileRoute">
+                                Profile
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink :href="logoutRoute" method="post" as="button">
                                 Log Out
                             </ResponsiveNavLink>
                         </div>
@@ -150,3 +179,62 @@ const showingNavigationDropdown = ref(false);
         </div>
     </div>
 </template>
+
+<script setup>
+import { ref, computed } from 'vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import ApplicationLogo from '@/Components/ApplicationLogo.vue';
+import Dropdown from '@/Components/Dropdown.vue';
+import DropdownLink from '@/Components/DropdownLink.vue';
+import NavLink from '@/Components/NavLink.vue';
+import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
+import NotificationDropdown from '@/Components/NotificationDropdown.vue';
+
+defineProps({
+    title: String,
+});
+
+const showingNavigationDropdown = ref(false);
+const page = usePage();
+
+const userRole = computed(() => page.props.auth.role || 'client');
+const isAdmin = computed(() => userRole.value === 'admin');
+const isAgent = computed(() => userRole.value === 'agent');
+const isClient = computed(() => userRole.value === 'client');
+
+const dashboardRoute = computed(() => {
+    if (isAdmin.value) return route('admin.dashboard');
+    if (isAgent.value) return route('agent.dashboard');
+    return route('client.dashboard');
+});
+
+const dashboardRouteName = computed(() => {
+    if (isAdmin.value) return 'admin.dashboard';
+    if (isAgent.value) return 'agent.dashboard';
+    return 'client.dashboard';
+});
+
+const ticketsRoute = computed(() => {
+    if (isAdmin.value) return route('admin.tickets.index');
+    if (isAgent.value) return route('agent.tickets.index');
+    return route('client.tickets.index');
+});
+
+const ticketsRouteName = computed(() => {
+    if (isAdmin.value) return 'admin.tickets.*';
+    if (isAgent.value) return 'agent.tickets.*';
+    return 'client.tickets.*';
+});
+
+const profileRoute = computed(() => {
+    if (isAdmin.value) return route('admin.profile');
+    if (isAgent.value) return route('agent.profile');
+    return route('client.profile');
+});
+
+const logoutRoute = computed(() => {
+    if (isAdmin.value) return route('admin.logout');
+    if (isAgent.value) return route('agent.logout');
+    return route('client.logout');
+});
+</script>

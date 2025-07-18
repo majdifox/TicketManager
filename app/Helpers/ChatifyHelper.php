@@ -4,7 +4,8 @@ namespace App\Helpers;
 
 use App\Models\Ticket;
 use App\Models\User;
-use Chatify\Facades\ChatifyMessenger as Chatify;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ChatifyHelper
 {
@@ -20,21 +21,32 @@ class ChatifyHelper
         $clientUser = $ticket->client->user;
         $agentUser = $ticket->agent->user;
 
-        // Send initial message from system
-        $message = "Ticket #{$ticket->ticket_number} - {$ticket->subject}\n\n";
-        $message .= "Priority: {$ticket->priority}\n";
-        $message .= "Category: {$ticket->category->name}\n\n";
-        $message .= "Description: {$ticket->description}";
+        // Create initial system message
+        $message = "🎫 Ticket #{$ticket->ticket_number}\n";
+        $message .= "📋 Subject: {$ticket->subject}\n";
+        $message .= "🔥 Priority: {$ticket->priority}\n";
+        $message .= "📂 Category: {$ticket->category->name}\n\n";
+        $message .= "📝 Description: {$ticket->description}";
 
-        // Use Chatify to send message
-        // Note: Chatify doesn't have a direct API for creating conversations
-        // Messages create conversations automatically
-        
+        // Create message in Chatify format
+        try {
+            DB::table('ch_messages')->insert([
+                'id' => \Illuminate\Support\Str::uuid(),
+                'from_id' => $agentUser->id,
+                'to_id' => $clientUser->id,
+                'body' => $message,
+                'seen' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to create Chatify conversation: ' . $e->getMessage());
+        }
+
         return [
             'client_id' => $clientUser->id,
             'agent_id' => $agentUser->id,
             'ticket_id' => $ticket->id,
-            'initial_message' => $message,
         ];
     }
 
@@ -55,7 +67,7 @@ class ChatifyHelper
             return null;
         }
 
-        return route('chatify', ['user' => $otherUserId]);
+        return url("/chatify/{$otherUserId}");
     }
 
     /**
@@ -67,13 +79,26 @@ class ChatifyHelper
             return;
         }
 
-        // This would need to be implemented based on Chatify's internal structure
-        // For now, it's a placeholder for the concept
-        
         $clientUserId = $ticket->client->user_id;
         $agentUserId = $ticket->agent->user_id;
 
-        // Log the system message for both users
-        // In a real implementation, you'd use Chatify's message creation
+        $systemMessage = "🔔 System: " . $message;
+
+        try {
+            // Send message to both users
+            DB::table('ch_messages')->insert([
+                [
+                    'id' => \Illuminate\Support\Str::uuid(),
+                    'from_id' => $agentUserId,
+                    'to_id' => $clientUserId,
+                    'body' => $systemMessage,
+                    'seen' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send system message: ' . $e->getMessage());
+        }
     }
 }

@@ -9,6 +9,7 @@ use App\Models\Agent;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
@@ -38,14 +39,14 @@ class DashboardController extends Controller
             'agent_performance' => $this->getAgentPerformance(),
         ];
 
-        $recent_tickets = Ticket::with(['client.user', 'agent.user', 'category'])
+        $recentTickets = Ticket::with(['client.user', 'agent.user', 'category'])
             ->latest()
             ->take(10)
             ->get();
 
-        return response()->json([
+        return Inertia::render('Admin/Dashboard', [
             'stats' => $stats,
-            'recent_tickets' => $recent_tickets,
+            'recentTickets' => $recentTickets,
         ]);
     }
 
@@ -54,7 +55,8 @@ class DashboardController extends Controller
      */
     private function getAverageResolutionTime()
     {
-        $avgTime = Ticket::whereNotNull('resolved_at')
+        $avgTime = DB::table('tickets')
+            ->whereNotNull('resolved_at')
             ->selectRaw('AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours')
             ->first();
 
@@ -62,13 +64,22 @@ class DashboardController extends Controller
     }
 
     /**
-     * Get ticket count by priority.
+     * Get ticket count by priority - Fixed format for PriorityChart component.
      */
     private function getTicketsByPriority()
     {
-        return Ticket::selectRaw('priority, COUNT(*) as count')
+        $priorityData = DB::table('tickets')
+            ->selectRaw('priority, COUNT(*) as count')
             ->groupBy('priority')
-            ->pluck('count', 'priority');
+            ->get();
+
+        // Transform to format expected by PriorityChart component
+        return $priorityData->map(function ($item) {
+            return [
+                'priority' => $item->priority,
+                'count' => $item->count
+            ];
+        })->toArray();
     }
 
     /**
@@ -89,11 +100,11 @@ class DashboardController extends Controller
     }
 
     /**
-     * Get agent performance metrics.
+     * Get agent performance metrics - Fixed format for AgentPerformanceTable component.
      */
     private function getAgentPerformance()
     {
-        return Agent::with('user:id,name')
+        return Agent::with('user:id,name,email')
             ->withCount([
                 'tickets as total_tickets',
                 'tickets as open_tickets' => function ($query) {
@@ -102,16 +113,29 @@ class DashboardController extends Controller
                 'tickets as resolved_tickets' => function ($query) {
                     $query->where('status', 'Resolved');
                 },
+                'tickets as resolved_today' => function ($query) {
+                    $query->where('status', 'Resolved')
+                          ->whereDate('updated_at', today());
+                },
             ])
             ->get()
             ->map(function ($agent) {
+                // Calculate performance score based on resolved vs total tickets
+                $performanceScore = 0;
+                if ($agent->total_tickets > 0) {
+                    $performanceScore = round(($agent->resolved_tickets / $agent->total_tickets) * 100);
+                }
+
                 return [
                     'id' => $agent->id,
                     'name' => $agent->user->name,
+                    'email' => $agent->user->email ?? 'No email',
                     'total_tickets' => $agent->total_tickets,
                     'open_tickets' => $agent->open_tickets,
                     'resolved_tickets' => $agent->resolved_tickets,
+                    'resolved_today' => $agent->resolved_today,
                     'is_available' => $agent->is_available,
+                    'performance_score' => $performanceScore,
                 ];
             });
     }

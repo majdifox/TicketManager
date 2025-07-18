@@ -50,6 +50,24 @@ class User extends Authenticatable
     ];
 
     /**
+     * Boot method to set default values for Chatify compatibility.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+        
+        static::creating(function ($user) {
+            // Set default values for Chatify fields if not provided
+            if (is_null($user->messenger_color)) {
+                $user->messenger_color = '#2180f3';
+            }
+            if (is_null($user->active_status)) {
+                $user->active_status = true;
+            }
+        });
+    }
+
+    /**
      * Get the role that owns the user.
      */
     public function role()
@@ -137,5 +155,44 @@ class User extends Authenticatable
             default:
                 return '/';
         }
+    }
+
+    /**
+     * Get the notifications for the user.
+     * This method is required for Laravel's notification system.
+     */
+    public function notifications()
+    {
+        return $this->morphMany(\Illuminate\Notifications\DatabaseNotification::class, 'notifiable')
+                    ->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Get the unread notifications for the user.
+     */
+    public function unreadNotifications()
+    {
+        return $this->notifications()->whereNull('read_at');
+    }
+
+    /**
+     * Get the read notifications for the user.
+     */
+    public function readNotifications()
+    {
+        return $this->notifications()->whereNotNull('read_at');
+    }
+
+    /**
+     * Chatify compatibility methods
+     */
+    public function getAvatar()
+    {
+        return $this->avatar ?? asset('chatify/images/avatar.png');
+    }
+
+    public function getMessengerColor()
+    {
+        return $this->messenger_color ?? '#2180f3';
     }
 }

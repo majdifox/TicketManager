@@ -4,22 +4,93 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class NotificationController extends Controller
 {
     /**
-     * Get user's notifications.
+     * Get the authenticated user from any guard.
      */
-    public function index(Request $request)
+    private function getAuthenticatedUser()
     {
-        $user = Auth::user();
+        // Check each guard to find the authenticated user
+        if (Auth::guard('admin')->check()) {
+            return Auth::guard('admin')->user();
+        }
+        
+        if (Auth::guard('agent')->check()) {
+            return Auth::guard('agent')->user();
+        }
+        
+        if (Auth::guard('client')->check()) {
+            return Auth::guard('client')->user();
+        }
+        
+        // Fallback to default guard
+        return Auth::user();
+    }
+
+    /**
+     * Get the current guard name.
+     */
+    private function getCurrentGuard()
+    {
+        if (Auth::guard('admin')->check()) {
+            return 'admin';
+        }
+        
+        if (Auth::guard('agent')->check()) {
+            return 'agent';
+        }
+        
+        if (Auth::guard('client')->check()) {
+            return 'client';
+        }
+        
+        return 'web';
+    }
+
+    /**
+     * Display notifications page (Inertia).
+     */
+    public function index()
+    {
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            abort(401, 'Unauthenticated');
+        }
+        
+        $notifications = $user->notifications()
+            ->latest()
+            ->paginate(20);
+
+        $unreadCount = $user->unreadNotifications()->count();
+
+        return Inertia::render('Notifications/Index', [
+            'notifications' => $notifications,
+            'unread_count' => $unreadCount,
+        ]);
+    }
+
+    /**
+     * Get user's notifications for AJAX requests (JSON).
+     */
+    public function fetch(Request $request)
+    {
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
         
         $notifications = $user->notifications()
             ->when($request->unread_only, function ($query) {
                 return $query->whereNull('read_at');
             })
             ->latest()
-            ->paginate(20);
+            ->take(10) // Limit for dropdown
+            ->get();
 
         return response()->json([
             'notifications' => $notifications,
@@ -32,7 +103,12 @@ class NotificationController extends Controller
      */
     public function markAsRead($id)
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        
         $notification = $user->notifications()->findOrFail($id);
         
         $notification->markAsRead();
@@ -48,7 +124,12 @@ class NotificationController extends Controller
      */
     public function markAllAsRead()
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        
         $user->unreadNotifications->markAsRead();
 
         return response()->json([
@@ -61,7 +142,12 @@ class NotificationController extends Controller
      */
     public function destroy($id)
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        
         $notification = $user->notifications()->findOrFail($id);
         
         $notification->delete();
@@ -76,7 +162,11 @@ class NotificationController extends Controller
      */
     public function preferences()
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
         
         // You can store preferences in user table or separate table
         $preferences = [
@@ -96,6 +186,12 @@ class NotificationController extends Controller
      */
     public function updatePreferences(Request $request)
     {
+        $user = $this->getAuthenticatedUser();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        
         $request->validate([
             'email_notifications' => 'boolean',
             'ticket_created' => 'boolean',

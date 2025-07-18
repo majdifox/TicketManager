@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Models\User;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -29,11 +30,49 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        return [
-            ...parent::share($request),
+        // Determine which guard is currently authenticated
+        $guard = null;
+        $user = null;
+        $role = null;
+
+        if (auth()->guard('admin')->check()) {
+            $guard = 'admin';
+            $userId = auth()->guard('admin')->id();
+            $user = User::find($userId);
+            $role = 'admin';
+        } elseif (auth()->guard('agent')->check()) {
+            $guard = 'agent';
+            $userId = auth()->guard('agent')->id();
+            $user = User::find($userId);
+            $role = 'agent';
+        } elseif (auth()->guard('client')->check()) {
+            $guard = 'client';
+            $userId = auth()->guard('client')->id();
+            $user = User::find($userId);
+            $role = 'client';
+        }
+
+        // Load role-specific relationships
+        if ($user) {
+            if ($role === 'admin') {
+                $user->load('admin');
+            } elseif ($role === 'agent') {
+                $user->load('agent');
+            } elseif ($role === 'client') {
+                $user->load('client');
+            }
+        }
+
+        return array_merge(parent::share($request), [
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'role' => $role,
+                'guard' => $guard,
             ],
-        ];
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+            ],
+        ]);
     }
 }

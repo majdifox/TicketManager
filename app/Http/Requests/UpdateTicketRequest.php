@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Ticket;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Auth;
 
 class UpdateTicketRequest extends FormRequest
 {
@@ -12,8 +13,21 @@ class UpdateTicketRequest extends FormRequest
      */
     public function authorize(): bool
     {
+        // Check admin guard first
+        if (Auth::guard('admin')->check()) {
+            $user = Auth::guard('admin')->user();
+            return $user && $user->role_id === 1; // Admin role check
+        }
+        
+        // Check agent guard
+        if (Auth::guard('agent')->check()) {
+            $user = Auth::guard('agent')->user();
+            return $user && $user->role_id === 2; // Agent role check
+        }
+        
+        // Check default guard (fallback)
         $user = auth()->user();
-        return $user && ($user->isAdmin() || $user->isAgent());
+        return $user && in_array($user->role_id, [1, 2]); // Admin or Agent
     }
 
     /**

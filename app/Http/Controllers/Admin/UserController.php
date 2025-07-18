@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules;
+use Inertia\Inertia;
 
 class UserController extends Controller
 {
@@ -19,15 +20,16 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
-        $users = User::with(['role'])
+        $query = User::with(['role'])
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%");
             })
             ->when($request->role_id, function ($query, $role) {
                 $query->where('role_id', $role);
-            })
-            ->paginate(15);
+            });
+
+        $users = $query->paginate(15);
 
         // Load role-specific profiles
         $users->getCollection()->transform(function ($user) {
@@ -41,7 +43,22 @@ class UserController extends Controller
             return $user;
         });
 
-        return response()->json($users);
+        return Inertia::render('Admin/Users/Index', [
+            'users' => $users,
+            'filters' => $request->only(['search', 'role_id']),
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new user.
+     */
+    public function create()
+    {
+        $roles = Role::whereIn('id', [1, 2])->get(); // Only Admin and Agent
+
+        return Inertia::render('Admin/Users/Create', [
+            'roles' => $roles,
+        ]);
     }
 
     /**
@@ -84,18 +101,8 @@ class UserController extends Controller
             return $user;
         });
 
-        $user->load('role');
-        
-        if ($user->isAdmin()) {
-            $user->load('admin');
-        } else {
-            $user->load('agent');
-        }
-
-        return response()->json([
-            'message' => 'User created successfully.',
-            'user' => $user,
-        ], 201);
+        return redirect()->route('admin.users.index')
+            ->with('success', 'User created successfully.');
     }
 
     /**
@@ -117,7 +124,30 @@ class UserController extends Controller
             }]);
         }
 
-        return response()->json($user);
+        return Inertia::render('Admin/Users/Show', ['user' => $user]);
+    }
+
+    /**
+     * Show the form for editing the specified user.
+     */
+    public function edit(User $user)
+    {
+        $user->load('role');
+        
+        if ($user->isAdmin()) {
+            $user->load('admin');
+        } elseif ($user->isAgent()) {
+            $user->load('agent');
+        } elseif ($user->isClient()) {
+            $user->load('client');
+        }
+
+        $roles = Role::whereIn('id', [1, 2])->get();
+
+        return Inertia::render('Admin/Users/Edit', [
+            'user' => $user,
+            'roles' => $roles,
+        ]);
     }
 
     /**
@@ -127,9 +157,8 @@ class UserController extends Controller
     {
         // Prevent updating client to admin/agent role
         if ($user->isClient() && in_array($request->role_id, [1, 2])) {
-            return response()->json([
-                'message' => 'Cannot change client role to admin or agent.',
-            ], 422);
+            return redirect()->back()
+                ->withErrors(['role_id' => 'Cannot change client role to admin or agent.']);
         }
 
         $request->validate([
@@ -163,20 +192,8 @@ class UserController extends Controller
             $profile->update($updateData);
         }
 
-        $user->load('role');
-        
-        if ($user->isAdmin()) {
-            $user->load('admin');
-        } elseif ($user->isAgent()) {
-            $user->load('agent');
-        } elseif ($user->isClient()) {
-            $user->load('client');
-        }
-
-        return response()->json([
-            'message' => 'User updated successfully.',
-            'user' => $user,
-        ]);
+        return redirect()->route('admin.users.index')
+            ->with('success', 'User updated successfully.');
     }
 
     /**
@@ -186,25 +203,13 @@ class UserController extends Controller
     {
         // Prevent deleting self
         if (auth()->id() === $user->id) {
-            return response()->json([
-                'message' => 'You cannot delete your own account.',
-            ], 422);
+            return redirect()->back()
+                ->withErrors(['error' => 'You cannot delete your own account.']);
         }
 
         $user->delete();
 
-        return response()->json([
-            'message' => 'User deleted successfully.',
-        ]);
-    }
-
-    /**
-     * Get all roles.
-     */
-    public function roles()
-    {
-        $roles = Role::all();
-
-        return response()->json($roles);
+        return redirect()->route('admin.users.index')
+            ->with('success', 'User deleted successfully.');
     }
 }
